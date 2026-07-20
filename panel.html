@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>剪切板历史</title>
+<style>
+  :root {
+    --bg: #F5F9FC;
+    --card-bg: #FFFFFF;
+    --primary: #64B5F6;
+    --primary-light: #E3F2FD;
+    --primary-dark: #1E88E5;
+    --text: #333333;
+    --text-secondary: #888888;
+    --text-hint: #AAAAAA;
+    --border: #E8EEF2;
+    --danger: #EF5350;
+    --pin-color: #FFB74D;
+    --shadow: 0 2px 8px rgba(0,0,0,0.06);
+    --shadow-hover: 0 4px 16px rgba(0,0,0,0.10);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* ---- 搜索栏 ---- */
+  .search-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 12px 14px;
+    background: var(--bg);
+  }
+
+  .search-input {
+    width: 100%;
+    height: 36px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0 14px 0 36px;
+    font-size: 14px;
+    font-family: var(--font);
+    outline: none;
+    background: var(--card-bg);
+    color: var(--text);
+    transition: border-color 0.2s;
+  }
+
+  .search-input:focus {
+    border-color: var(--primary);
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 24px;
+    top: 22px;
+    color: var(--text-hint);
+    font-size: 14px;
+    pointer-events: none;
+  }
+
+  /* ---- 状态栏 ---- */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .status-bar .count {
+    font-weight: 600;
+    color: var(--primary-dark);
+  }
+
+  .status-bar .settings-btn {
+    cursor: pointer;
+    color: var(--primary-dark);
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+
+  .status-bar .settings-btn:hover {
+    background: var(--primary-light);
+  }
+
+  /* ---- 卡片列表 ---- */
+  .clip-list {
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 100px;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-hint);
+  }
+
+  .empty-state .icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+  }
+
+  .empty-state .text {
+    font-size: 14px;
+  }
+
+  /* ---- 卡片 ---- */
+  .card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    border: 2px solid transparent;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .card:hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
+  }
+
+  .card.pinned {
+    border-color: var(--primary);
+    background: #FAFDFF;
+  }
+
+  .card.flash {
+    animation: flashCard 0.4s ease;
+  }
+
+  @keyframes flashCard {
+    0%, 100% { background: var(--card-bg); }
+    50% { background: var(--primary-light); }
+  }
+
+  /* 卡片文字内容 */
+  .card-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .card-text {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-all;
+  }
+
+  .card-image {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: var(--border);
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .card-app {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .card-time {
+    color: var(--text-hint);
+  }
+
+  /* 卡片操作按钮 */
+  .card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .card-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    background: transparent;
+  }
+
+  .pin-btn { color: var(--text-hint); }
+  .pin-btn:hover { background: #FFF3E0; color: var(--pin-color); }
+  .pin-btn.active { color: var(--pin-color); }
+
+  .delete-btn { color: var(--text-hint); }
+  .delete-btn:hover { background: #FFEBEE; color: var(--danger); }
+
+  /* ---- 设置面板 ---- */
+  .settings-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+  }
+  .settings-overlay.show { display: flex; }
+
+  .settings-panel {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 24px;
+    width: 320px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+
+  .settings-panel h3 {
+    font-size: 16px;
+    margin-bottom: 16px;
+    color: var(--primary-dark);
+  }
+
+  .settings-group {
+    margin-bottom: 16px;
+  }
+
+  .settings-group label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  .settings-group select,
+  .settings-group input {
+    width: 100%;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-size: 13px;
+    font-family: var(--font);
+    outline: none;
+    background: var(--bg);
+  }
+
+  .settings-group select:focus,
+  .settings-group input:focus {
+    border-color: var(--primary);
+  }
+
+  .settings-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 20px;
+  }
+
+  .btn {
+    height: 32px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--primary-dark); }
+
+  .btn-secondary {
+    background: var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover { background: #d0d8de; }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 200;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- 状态栏 -->
+<div class="status-bar">
+  <span>共 <span class="count" id="countEl">0</span> 条记录</span>
+  <span class="settings-btn" onclick="openSettings()" title="设置">⚙️</span>
+</div>
+
+<!-- 搜索栏 -->
+<div class="search-bar">
+  <span class="search-icon">🔍</span>
+  <input
+    class="search-input"
+    type="text"
+    id="searchInput"
+    placeholder="搜索历史..."
+    oninput="onSearch(this.value)"
+  >
+</div>
+
+<!-- 卡片列表 -->
+<div class="clip-list" id="clipList">
+  <div class="empty-state">
+    <div class="icon">📋</div>
+    <div class="text">还没有复制内容<br>试试复制一些文字或截图吧</div>
+  </div>
+</div>
+
+<!-- 设置面板 -->
+<div class="settings-overlay" id="settingsOverlay" onclick="maybeCloseSettings(event)">
+  <div class="settings-panel" onclick="event.stopPropagation()">
+    <h3>⚙️ 设置</h3>
+    <div class="settings-group">
+      <label>保留天数</label>
+      <select id="retentionSelect">
+        <option value="1">1 天</option>
+        <option value="3">3 天</option>
+        <option value="7">7 天</option>
+        <option value="30">30 天</option>
+        <option value="0">永久保留</option>
+      </select>
+    </div>
+    <div class="settings-group">
+      <label>排除应用（逗号分隔）</label>
+      <input type="text" id="excludedAppsInput" placeholder="1Password, Bitwarden, ...">
+    </div>
+    <div class="settings-actions">
+      <button class="btn btn-secondary" onclick="closeSettings()">取消</button>
+      <button class="btn btn-primary" onclick="saveSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toastEl"></div>
+
+<script>
+// ---- 与 Python 主进程通信 ----
+function send(action, data = {}) {
+  const bridge = window.webkit?.messageHandlers?.clipboardBridge;
+  if (bridge) {
+    bridge.postMessage({ action, ...data });
+  }
+}
+
+// 页面加载完成时请求数据（带重试以防 bridge 未就绪）
+window.onload = () => {
+  let retries = 0;
+  function tryGetClips() {
+    const bridge = window.webkit?.messageHandlers?.clipboardBridge;
+    if (bridge) {
+      send('getClips');
+    } else if (retries < 10) {
+      retries++;
+      setTimeout(tryGetClips, 200);
+    }
+  }
+  tryGetClips();
+};
+
+// ---- 接收 Python 发来的数据 ----
+window.receiveClips = function(clips) {
+  window._clips = clips || [];
+  renderClips(window._clips);
+};
+
+window.receiveSettings = function(settings) {
+  document.getElementById('retentionSelect').value = settings.retention_days || 7;
+  document.getElementById('excludedAppsInput').value = (settings.excluded_apps || []).join(', ');
+};
+
+// ---- 渲染卡片列表 ----
+function renderClips(clips) {
+  const listEl = document.getElementById('clipList');
+  const countEl = document.getElementById('countEl');
+  countEl.textContent = clips.length;
+
+  if (!clips.length) {
+    listEl.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📋</div>
+        <div class="text">还没有复制内容<br>试试复制一些文字或截图吧</div>
+      </div>`;
+    return;
+  }
+
+  listEl.innerHTML = clips.map(clip => {
+    const isPinned = clip.pinned ? 'pinned' : '';
+    const pinIcon = clip.pinned ? '📌' : '📌';
+    const pinClass = clip.pinned ? 'pin-btn active' : 'pin-btn';
+    const time = formatTime(clip.timestamp);
+    const sourceApp = clip.source_app || '';
+
+    let bodyHtml = '';
+    if (clip.type === 'text') {
+      bodyHtml = `<div class="card-text">${escapeHtml(clip.preview || clip.content || '')}</div>`;
+    } else if (clip.type === 'image' && clip.image_path) {
+      const imgSrc = 'file://' + clip.image_path;
+      bodyHtml = `<img class="card-image" src="${imgSrc}" alt="图片" />`;
+    }
+
+    return `
+      <div class="card ${isPinned}" id="card-${clip.id}" onclick="onPaste('${clip.id}')">
+        <div class="card-body">
+          ${bodyHtml}
+          <div class="card-meta">
+            ${sourceApp ? `<span class="card-app">${escapeHtml(sourceApp)}</span>` : ''}
+            <span class="card-time" title="${new Date(clip.timestamp).toLocaleString('zh-CN')}">${time}</span>
+          </div>
+        </div>
+        <div class="card-actions" onclick="event.stopPropagation()">
+          <button class="${pinClass}" onclick="onTogglePin('${clip.id}')" title="置顶">📌</button>
+          <button class="delete-btn" onclick="onDelete('${clip.id}')" title="删除">🗑️</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ---- 交互处理 ----
+function onPaste(id) {
+  // 闪烁动画
+  const card = document.getElementById('card-' + id);
+  if (card) {
+    card.classList.add('flash');
+    setTimeout(() => card.classList.remove('flash'), 400);
+  }
+  send('paste', { id });
+}
+
+function onTogglePin(id) {
+  send('pin', { id });
+}
+
+function onDelete(id) {
+  send('delete', { id });
+}
+
+function onSearch(query) {
+  send('getClips', { query });
+}
+
+// ---- 设置面板 ----
+function openSettings() {
+  document.getElementById('settingsOverlay').classList.add('show');
+  send('getSettings');
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').classList.remove('show');
+}
+
+function maybeCloseSettings(e) {
+  if (e.target === document.getElementById('settingsOverlay')) {
+    closeSettings();
+  }
+}
+
+function saveSettings() {
+  const retentionDays = parseInt(document.getElementById('retentionSelect').value);
+  const excludedApps = document.getElementById('excludedAppsInput').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+  send('saveSettings', {
+    settings: {
+      retention_days: retentionDays,
+      excluded_apps: excludedApps,
+    }
+  });
+  closeSettings();
+}
+
+// ---- Toast ----
+window.showToast = function(msg) {
+  const el = document.getElementById('toastEl');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1500);
+};
+
+// ---- 工具函数 ----
+function formatTime(ts) {
+  if (!ts) return '';
+  const now = Date.now();
+  const diff = now - ts;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return '刚刚';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} 分钟前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} 小时前`;
+  const days = Math.floor(hr / 24);
+  if (days < 30) return `${days} 天前`;
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
