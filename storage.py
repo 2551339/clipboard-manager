@@ -10,6 +10,7 @@ import os
 import uuid
 import time
 import shutil
+import hashlib
 from datetime import datetime, timedelta
 
 # 存储路径
@@ -64,44 +65,68 @@ def save_clips(clips):
 def add_clip(clip_type, content, source_app="", image_data=None):
     """
     添加一条剪切板记录
-    - clip_type: "text" 或 "image"
-    - content: 文字内容（text 类型）
-    - source_app: 来源应用名
-    - image_data: 图片二进制数据（image 类型）
-    返回新条目的 id
+    - 如果内容已存在，则更新时间戳（去重）
+    - 如果不存在，新建条目
+    返回条目的 id
     """
     clips = load_clips()
-    clip_id = str(uuid.uuid4())[:8]
     now = int(time.time() * 1000)
-
-    entry = {
-        "id": clip_id,
-        "type": clip_type,
-        "timestamp": now,
-        "pinned": False,
-        "source_app": source_app,
-    }
 
     if clip_type == "text":
         content = content.strip()
-        entry["content"] = content
-        entry["preview"] = content[:100]
+        # 检查是否已存在相同文字内容
+        for c in clips:
+            if c["type"] == "text" and c.get("content") == content:
+                c["timestamp"] = now
+                c["source_app"] = source_app
+                save_clips(clips)
+                return c["id"]
+
+        clip_id = str(uuid.uuid4())[:8]
+        entry = {
+            "id": clip_id,
+            "type": "text",
+            "timestamp": now,
+            "pinned": False,
+            "source_app": source_app,
+            "content": content,
+            "preview": content[:100],
+        }
+
     elif clip_type == "image" and image_data:
-        # 保存图片文件
+        # 图片：通过数据哈希去重
+        img_hash = hashlib.md5(image_data).hexdigest()
+        for c in clips:
+            if c["type"] == "image" and c.get("img_hash") == img_hash:
+                c["timestamp"] = now
+                c["source_app"] = source_app
+                save_clips(clips)
+                return c["id"]
+
+        clip_id = str(uuid.uuid4())[:8]
         img_filename = f"{clip_id}.png"
         img_path = os.path.join(IMAGES_DIR, img_filename)
         with open(img_path, "wb") as f:
             f.write(image_data)
-        entry["image_path"] = img_path
-        entry["preview"] = "[图片]"
+        entry = {
+            "id": clip_id,
+            "type": "image",
+            "timestamp": now,
+            "pinned": False,
+            "source_app": source_app,
+            "image_path": img_path,
+            "preview": "[图片]",
+            "img_hash": img_hash,
+        }
+    else:
+        return None
 
-    # 插入到列表开头（但置顶项保持在前）
-    # 先取出置顶项
+    # 插入到列表开头（置顶项保持在前）
     pinned = [c for c in clips if c.get("pinned")]
     unpinned = [c for c in clips if not c.get("pinned")]
     unpinned.insert(0, entry)
     save_clips(pinned + unpinned)
-    return clip_id
+    return entry["id"]
 
 
 def toggle_pin(clip_id):
@@ -125,6 +150,19 @@ def delete_clip(clip_id):
             clips.remove(c)
             break
     save_clips(clips)
+    return clips
+
+
+def clear_all_unpinned():
+    """一键清空所有未置顶的内容"""
+    clips = load_clips()
+    unpinned = [c for c in clips if not c.get("pinned")]
+    pinned = [c for c in clips if c.get("pinned")]
+    for c in unpinned:
+        if c.get("image_path") and os.path.exists(c["image_path"]):
+            os.remove(c["image_path"])
+    save_clips(pinned)
+    return len(unpinned)
     return clips
 
 

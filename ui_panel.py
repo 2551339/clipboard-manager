@@ -12,7 +12,7 @@ from AppKit import (
 )
 from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
 from Foundation import NSURL, NSObject, NSMakeRect, NSBundle
-from storage import load_clips, toggle_pin, delete_clip, search_clips, load_settings, save_settings
+from storage import load_clips, toggle_pin, delete_clip, search_clips, load_settings, save_settings, clear_all_unpinned
 from Cocoa import NSPasteboard, NSPasteboardTypeString, NSPasteboardTypePNG
 import objc
 
@@ -81,6 +81,13 @@ class ScriptHandler(NSObject):
             clip_id = body.get("id")
             self._app.paste_clip(clip_id)
 
+        elif action == "copy":
+            clip_id = body.get("id")
+            self._app.copy_clip(clip_id)
+            self._app.webview.evaluateJavaScript_completionHandler_(
+                "window.showToast('已复制')", None
+            )
+
         elif action == "getSettings":
             settings = load_settings()
             self._app.webview.evaluateJavaScript_completionHandler_(
@@ -92,6 +99,14 @@ class ScriptHandler(NSObject):
             save_settings(settings)
             self._app.webview.evaluateJavaScript_completionHandler_(
                 "window.showToast('设置已保存')", None
+            )
+
+        elif action == "clearAll":
+            removed = clear_all_unpinned()
+            clips = load_clips()
+            self._app.send_clips_to_webview(clips)
+            self._app.webview.evaluateJavaScript_completionHandler_(
+                f"window.showToast('已清空 {removed} 条记录')", None
             )
 
 
@@ -230,17 +245,7 @@ class ClipboardPanel:
         if not clip:
             return
 
-        pb = NSPasteboard.generalPasteboard()
-        pb.clearContents()
-
-        if clip["type"] == "text":
-            pb.setString_forType_(clip["content"], NSPasteboardTypeString)
-        elif clip["type"] == "image" and clip.get("image_path"):
-            if os.path.exists(clip["image_path"]):
-                from Foundation import NSData
-                data = NSData.dataWithContentsOfFile_(clip["image_path"])
-                if data:
-                    pb.setData_forType_(data, NSPasteboardTypePNG)
+        self._write_to_clipboard(clip)
 
         # 隐藏面板
         self.hide()
@@ -251,11 +256,25 @@ class ClipboardPanel:
             'tell application "System Events" to keystroke "v" using command down'
         ])
 
-        # 反馈动画
-        if self._webview:
-            self._webview.evaluateJavaScript_completionHandler_(
-                f"window.showToast('已粘贴')", None
-            )
+    def copy_clip(self, clip_id):
+        """仅复制到剪贴板，不粘贴"""
+        clips = load_clips()
+        clip = next((c for c in clips if c["id"] == clip_id), None)
+        if clip:
+            self._write_to_clipboard(clip)
+
+    def _write_to_clipboard(self, clip):
+        """将内容写入系统剪贴板"""
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        if clip["type"] == "text":
+            pb.setString_forType_(clip["content"], NSPasteboardTypeString)
+        elif clip["type"] == "image" and clip.get("image_path"):
+            if os.path.exists(clip["image_path"]):
+                from Foundation import NSData
+                data = NSData.dataWithContentsOfFile_(clip["image_path"])
+                if data:
+                    pb.setData_forType_(data, NSPasteboardTypePNG)
 
     @property
     def webview(self):

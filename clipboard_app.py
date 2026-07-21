@@ -63,12 +63,22 @@ class ClipboardApp(rumps.App):
                     if result:
                         self._monitor.on_new_clip(result)
                         self._update_menu_count()
+                        # 如果面板开着，实时推送新数据
+                        self._push_to_panel_if_visible()
                 except Exception as e:
                     print(f"[监控错误] {e}")
                 time.sleep(0.5)
 
         t = threading.Thread(target=poll_loop, daemon=True)
         t.start()
+
+    def _push_to_panel_if_visible(self):
+        """面板可见时推送最新数据"""
+        try:
+            if self._panel and self._panel.window and self._panel.window.isVisible():
+                self._panel.send_clips_to_webview(load_clips())
+        except Exception:
+            pass
 
     def _update_menu_count(self):
         """更新菜单中显示的条目数"""

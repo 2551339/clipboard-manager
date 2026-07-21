@@ -100,6 +100,24 @@
     background: var(--primary-light);
   }
 
+  .status-bar .clear-btn {
+    cursor: pointer;
+    color: var(--text-hint);
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    font-family: var(--font);
+    transition: all 0.2s;
+  }
+
+  .status-bar .clear-btn:hover {
+    background: #FFEBEE;
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
   /* ---- 卡片列表 ---- */
   .clip-list {
     padding: 8px 12px;
@@ -234,6 +252,9 @@
   .pin-btn:hover { background: #FFF3E0; color: var(--pin-color); }
   .pin-btn.active { color: var(--pin-color); }
 
+  .copy-btn { color: var(--text-hint); }
+  .copy-btn:hover { background: var(--primary-light); color: var(--primary-dark); }
+
   .delete-btn { color: var(--text-hint); }
   .delete-btn:hover { background: #FFEBEE; color: var(--danger); }
 
@@ -347,7 +368,10 @@
 <!-- 状态栏 -->
 <div class="status-bar">
   <span>共 <span class="count" id="countEl">0</span> 条记录</span>
-  <span class="settings-btn" onclick="openSettings()" title="设置">⚙️</span>
+  <span>
+    <button class="clear-btn" onclick="onClearAll()" title="清空未置顶内容">🗑️ 一键清空</button>
+    <span class="settings-btn" onclick="openSettings()" title="设置">⚙️</span>
+  </span>
 </div>
 
 <!-- 搜索栏 -->
@@ -473,6 +497,7 @@ function renderClips(clips) {
           </div>
         </div>
         <div class="card-actions" onclick="event.stopPropagation()">
+          <button class="copy-btn" onclick="onCopy('${clip.id}')" title="复制">📋</button>
           <button class="${pinClass}" onclick="onTogglePin('${clip.id}')" title="置顶">📌</button>
           <button class="delete-btn" onclick="onDelete('${clip.id}')" title="删除">🗑️</button>
         </div>
@@ -495,8 +520,36 @@ function onTogglePin(id) {
   send('pin', { id });
 }
 
+function onCopy(id) {
+  send('copy', { id });
+}
+
 function onDelete(id) {
   send('delete', { id });
+}
+
+function onClearAll() {
+  showConfirm('确定要清空所有未置顶的记录吗？<br><small>置顶的内容会保留</small>', () => {
+    send('clearAll');
+  });
+}
+
+// 自定义确认框（WkWebView 不支持原生 confirm）
+function showConfirm(msg, onOk) {
+  const overlay = document.createElement('div');
+  overlay.className = 'settings-overlay show';
+  overlay.innerHTML = `
+    <div class="settings-panel" style="text-align:center;">
+      <p style="margin-bottom:16px; font-size:14px;">${msg}</p>
+      <div class="settings-actions" style="justify-content:center;">
+        <button class="btn btn-secondary cancel-btn">取消</button>
+        <button class="btn btn-primary ok-btn" style="background:var(--danger);">确认清空</button>
+      </div>
+    </div>`;
+  overlay.querySelector('.cancel-btn').onclick = () => overlay.remove();
+  overlay.querySelector('.ok-btn').onclick = () => { overlay.remove(); onOk(); };
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
 }
 
 function onSearch(query) {
